@@ -1,6 +1,11 @@
 from registry import ToolRegistry
 from pydantic import BaseModel
+from dotenv import load_dotenv
 import json
+import os
+from openai import OpenAI
+
+load_dotenv()
 
 class AgentPlan(BaseModel):
     task_type: str
@@ -13,6 +18,7 @@ class AgentPlan(BaseModel):
 class Architect:
     def __init__(self, registry: ToolRegistry):
         self.registry = registry
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
     def _build_prompt(self, task_description: str) -> str:
         available_tools = self.registry.get_all_metadata()
@@ -34,19 +40,17 @@ class Architect:
                     "confidence_score": 0.0
                 }}"""
 
-    def _mock_llm_call(self, prompt: str) -> str:
-        return json.dumps({
-            "task_type": "code_quality",
-            "selected_tools": ["linter", "code_analyzer"],
-            "workflow_pattern": "sequential",
-            "reasoning": "For code quality analysis, we first lint for style issues, then do deep analysis for bugs.",
-            "estimated_total_cost": 6.0,
-            "confidence_score": 0.85
-        })
+    def _llm_call(self, prompt: str) -> str:
+        response = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
+        )
+        return response.choices[0].message.content
     
     def create_plan(self, task_description: str) -> AgentPlan:
         prompt = self._build_prompt(task_description)
-        response = self._mock_llm_call(prompt)
+        response = self._llm_call(prompt)
         
         try:
             plan_data = json.loads(response)
